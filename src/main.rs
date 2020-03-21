@@ -18,11 +18,10 @@ struct NodeData {
 
 impl NodeData {
     pub fn get_manage_award(&mut self) -> f64 {
-        let mut mgp = self.taken;
-        if mgp {
+        if self.taken {
             0.0
         } else {
-            mgp = true;
+            self.taken = true;
             self.user.get_user_profit()
         }
     }
