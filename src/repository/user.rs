@@ -1,9 +1,7 @@
-use mysql::{chrono, Text, PooledConn, Params, Value};
+use mysql::{chrono, PooledConn, Params, Value};
 use mysql::prelude::Queryable;
-use std::borrow::Borrow;
-use std::ops::Add;
-use std::time::Duration;
 use crate::repository;
+use chrono::{NaiveDate, NaiveTime, Datelike};
 
 //user entity
 #[derive(Debug, PartialEq, Eq)]
@@ -17,6 +15,7 @@ pub struct User {
 
 impl User {
     //get user name
+    #[warn(dead_code)]
     pub fn get_name(&self) -> Option<&String> {
         Option::from(&self.real_name)
     }
@@ -27,7 +26,7 @@ impl User {
     //get all invitees
     pub fn get_invitees(&self) -> Option<Vec<User>> {
         let mut con: PooledConn = repository::POOL.get_conn().unwrap();
-        if let Ok(mut stm) = con.prep("select user_id,mobile,real_name,inviter_id,superior_id from user where superior_id = ?") {
+        if let Ok(stm) = con.prep("select user_id,mobile,real_name,inviter_id,superior_id from user where superior_id = ?") {
             let val = vec![Value::from(self.user_id)];
             let op = con
                 .exec_map(stm, Params::Positional(val), |(user_id, mobile, real_name, inviter_id, superior_id)| User { user_id, mobile, real_name, inviter_id, superior_id })
@@ -55,8 +54,24 @@ impl User {
     }
 
     //get profit of user
-    pub fn get_user_profit(&self) -> f64 {
-        println!("load profit form database.");
-        1.0
+    pub fn get_user_profit(&self, date: NaiveDate) -> f64 {
+        let time = NaiveTime::from_hms(0, 0, 0);
+        let start_time = date.and_time(time);
+        let end_time = if date.month() == 12 {
+            NaiveDate::from_ymd(date.year() + 1, 1, 1).and_time(time)
+        } else {
+            NaiveDate::from_ymd(date.year(), date.month() + 1, 1).and_time(time)
+        };
+        let mut con: PooledConn = repository::POOL.get_conn().unwrap();
+        let start_time = Value::Date(start_time.year() as u16, start_time.month() as u8, start_time.day() as u8, 0, 0, 0, 0);
+        let end_time = Value::Date(end_time.year() as u16, end_time.month() as u8, end_time.day() as u8, 0, 0, 0, 0);
+        let user_id = Value::Int(self.user_id as i64);
+        if let Ok(Some(amount)) = con.exec_first("select ifnull(sum(sharing_amount),0) from \
+        profit_sharing where user_id = ? and sharing_time between ? and ?",
+                                                 vec![user_id, start_time, end_time]) {
+            amount
+        } else {
+            0.0
+        }
     }
 }
