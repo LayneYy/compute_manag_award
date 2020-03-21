@@ -1,0 +1,12 @@
+[package]
+name = "compute_manage_award"
+version = "0.1.0"
+authors = ["layne <layneyy@163.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mysql="*"
+log = "0.4.8"
+lazy_static = "1.4.0"
