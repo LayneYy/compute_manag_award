@@ -6,6 +6,7 @@ use crate::repository::user::User;
 use std::collections::LinkedList;
 use chrono::NaiveDate;
 use rayon::prelude::*;
+use std::time::Duration;
 
 //node
 struct NodeData {
@@ -16,7 +17,16 @@ struct NodeData {
 }
 
 impl NodeData {
+    pub fn new(user: Arc<User>, taken: bool, is_manager: bool, manager_count: u32) -> Self {
+        Self {
+            user,
+            taken,
+            is_manager,
+            manager_count,
+        }
+    }
     pub fn get_manage_award(&mut self, date: NaiveDate) -> f64 {
+        //per list take once
         if self.taken {
             0.0
         } else {
@@ -41,7 +51,17 @@ impl ManageAwardAccumulator {
         self.get_all_root()
             .into_par_iter()
             .map(|root: LinkedList<Arc<RwLock<NodeData>>>| {
-                self.create_child(root)
+                let (user_name, user_id) = {
+                    let user = &root.front().unwrap().read().unwrap().user;
+                    (user.get_name(), user.get_user_id())
+                };
+                let manage_award = self.create_child(root);
+                if let Some(user_name) = user_name {
+                    println!("{}'s manage award amount is {}", user_name, manage_award);
+                } else {
+                    println!("{}'s manage award amount is {}", user_id, manage_award);
+                }
+                manage_award
             }).sum()
     }
     //produce some new LinkedList according to root.(reuse the all NodeData)
@@ -50,7 +70,7 @@ impl ManageAwardAccumulator {
             let data = root.back().expect("can't get tail.").read().unwrap();
             (data.manager_count, data.user.get_invitees())
         };//release read lock
-//if here is enough manager ,sum amount and return result,
+        //if here is enough manager ,sum amount and return result,
         if manager_count == 4 {
             return root.iter()
                 .map(|d| {
@@ -63,40 +83,34 @@ impl ManageAwardAccumulator {
             invitees
                 .into_par_iter()
                 .map(|inv: User| {
-//copy all nodes of root to current list
+                    //copy all nodes of root to current list
                     let mut child_list = LinkedList::new();
                     root.iter().for_each(|n| {
                         child_list.push_back(n.clone());
                     });
-//previous node's manager count
+                    //previous node's manager count
                     let pre_node_data_mc = { root.back().unwrap().read().unwrap().manager_count };
-//check if current user is manager
+                    //check if current user is manager
                     let is_manager = self.all_managers
                         .iter()
                         .map(|u| u.get_user_id())
                         .any(|uid| uid == inv.get_user_id());
                     let manager_count = if is_manager {
-//if current user is manager,the manager count plus 1
+                        //if current user is manager,the manager count plus 1
                         pre_node_data_mc + 1
                     } else {
-//if not
+                        //if not
                         pre_node_data_mc
                     };
-                    let node_data = NodeData {
-                        user: Arc::new(inv),
-                        taken: false,
-                        is_manager,
-                        manager_count,
-                    };
-//push current node data to back of list
+                    let node_data = NodeData::new(Arc::new(inv), false, is_manager, manager_count);
+                    //push current node data to back of list
                     child_list.push_back(Arc::new(RwLock::new(node_data)));
                     let child_list = child_list;
                     self.create_child(child_list)
                 })
                 .sum()
         } else {//has no invitees,return result according to manager count
-//keep 4 - (manager count) nodes behind last manager of current list
-
+            //keep 4 - (manager count) nodes behind last manager of current list
             let manager_count = {//the manager count of current list
                 root.back().unwrap().read().unwrap().manager_count
             };
@@ -126,12 +140,7 @@ impl ManageAwardAccumulator {
             .iter()
             .map(|mu| {
                 let mut l = LinkedList::new();
-                let node_data = NodeData {
-                    user: mu.clone(),
-                    taken: true,
-                    is_manager: true,
-                    manager_count: 0,
-                };
+                let node_data = NodeData::new(mu.clone(), true, true, 0);
                 l.push_back(Arc::new(RwLock::new(node_data)));
                 l
             })
@@ -146,10 +155,12 @@ fn main() {
         .into_iter()
         .map(|u| Arc::new(u))
         .collect();
+    println!("number of manager is {}", all_managers.len());
     let date = NaiveDate::from_ymd(2020, 2, 1);
-    let accumulator = ManageAwardAccumulator::new(all_managers,  date);
+    rayon::ThreadPoolBuilder::new().num_threads(50).build_global();
+    let accumulator = ManageAwardAccumulator::new(all_managers, date);
     let x = accumulator.accumulator();
-    println!("manage award amount is {}", x);
+    println!("total manage award amount is {}", x);
     let end_time = std::time::SystemTime::now();
-    println!("耗时:{}", start_time.duration_since(end_time).ok().unwrap().as_secs());
+    println!("耗时:{}", end_time.duration_since(start_time).ok().unwrap().as_secs());
 }

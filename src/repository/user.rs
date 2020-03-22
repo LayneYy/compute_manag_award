@@ -16,8 +16,8 @@ pub struct User {
 impl User {
     //get user name
     #[warn(dead_code)]
-    pub fn get_name(&self) -> Option<&String> {
-        Option::from(&self.real_name)
+    pub fn get_name(&self) -> Option<String> {
+        self.real_name.clone()
     }
     //get user id
     pub fn get_user_id(&self) -> usize {
@@ -66,9 +66,8 @@ impl User {
         let start_time = Value::Date(start_time.year() as u16, start_time.month() as u8, start_time.day() as u8, 0, 0, 0, 0);
         let end_time = Value::Date(end_time.year() as u16, end_time.month() as u8, end_time.day() as u8, 0, 0, 0, 0);
         let user_id = Value::Int(self.user_id as i64);
-        if let Ok(Some(amount)) = con.exec_first("select ifnull(sum(sharing_amount),0) from \
-        profit_sharing where user_id = ? and sharing_time between ? and ?",
-                                                 vec![user_id, start_time, end_time]) {
+        if let Ok(Some(amount)) = con.exec_first("select ifnull(sum(sharing_amount),0)from profit_sharing where sharing_time between ? and ? and user_id = ? and profit_source in('PLAN_CONSUME','CASH_ADVANCE')",
+                                                 vec![start_time, end_time, user_id]) {
             amount
         } else {
             0.0
